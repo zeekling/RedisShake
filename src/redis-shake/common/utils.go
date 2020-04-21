@@ -266,14 +266,14 @@ func SendPSyncAck(bw *bufio.Writer, offset int64) error {
 
 // TODO
 func paclusterSlotsHB(c redigo.Conn) {
-	_, err := redigo.Values(c.Do("pacluster", "slotshb"))
+	_, err := Values(c.Do("pacluster", "slotshb"))
 	if err != nil {
 		log.PanicError(err, "pacluster slotshb error")
 	}
 }
 
 func SelectDB(c redigo.Conn, db uint32) {
-	s, err := redigo.String(c.Do("select", db))
+	s, err := String(c.Do("select", db))
 	if err != nil {
 		log.PanicError(err, "select command error")
 	}
@@ -283,14 +283,14 @@ func SelectDB(c redigo.Conn, db uint32) {
 }
 
 func lpush(c redigo.Conn, key []byte, field []byte) {
-	_, err := redigo.Int64(c.Do("lpush", string(key), string(field)))
+	_, err := Int64(c.Do("lpush", string(key), string(field)))
 	if err != nil {
 		log.PanicError(err, "lpush command error")
 	}
 }
 
 func rpush(c redigo.Conn, key []byte, field []byte) {
-	_, err := redigo.Int64(c.Do("rpush", string(key), string(field)))
+	_, err := Int64(c.Do("rpush", string(key), string(field)))
 	if err != nil {
 		log.PanicError(err, "rpush command error")
 	}
@@ -301,28 +301,28 @@ func Float64ToByte(float float64) string {
 }
 
 func zadd(c redigo.Conn, key []byte, score []byte, member []byte) {
-	_, err := redigo.Int64(c.Do("zadd", string(key), string(score), string(member)))
+	_, err := Int64(c.Do("zadd", string(key), string(score), string(member)))
 	if err != nil {
 		log.PanicError(err, "zadd command error key ", string(key))
 	}
 }
 
 func sadd(c redigo.Conn, key []byte, member []byte) {
-	_, err := redigo.Int64(c.Do("sadd", key, member))
+	_, err := Int64(c.Do("sadd", key, member))
 	if err != nil {
 		log.PanicError(err, "sadd command error key:", string(key))
 	}
 }
 
 func hset(c redigo.Conn, key []byte, field []byte, value []byte) {
-	_, err := redigo.Int64(c.Do("hset", string(key), string(field), string(value)))
+	_, err := Int64(c.Do("hset", string(key), string(field), string(value)))
 	if err != nil {
 		log.PanicError(err, "hset command error key ", string(key))
 	}
 }
 
 func set(c redigo.Conn, key []byte, value []byte) {
-	s, err := redigo.String(c.Do("set", string(key), string(value)))
+	s, err := String(c.Do("set", string(key), string(value)))
 	if err != nil {
 		log.PanicError(err, "set command error")
 	}
@@ -746,26 +746,29 @@ func RestoreRdbEntry(c redigo.Conn, e *rdb.BinEntry) {
 		}
 	}
 	if e.Type == rdb.RdbTypeQuicklist {
-		exist, err := redigo.Bool(c.Do("exists", e.Key))
+		exist, err := Bool(c.Do("exists", e.Key))
 		if err != nil {
 			log.Panicf(err.Error())
 		}
 		if exist {
-			if conf.Options.Rewrite {
+			switch conf.Options.KeyExists {
+			case "rewrite":
 				if !conf.Options.Metric {
 					log.Infof("warning, rewrite key: %v", string(e.Key))
 				}
-				_, err := redigo.Int64(c.Do("del", e.Key))
+				_, err := Int64(c.Do("del", e.Key))
 				if err != nil {
 					log.Panicf("del ", string(e.Key), err)
 				}
-			} else {
-				log.Panicf("target key name is busy: %s", string(e.Key))
+			case "ignore":
+				log.Warnf("target key name is busy but ignore: %v", string(e.Key))
+			case "none":
+				log.Panicf("target key name is busy: %v", string(e.Key))
 			}
 		}
 		restoreQuicklistEntry(c, e)
 		if e.ExpireAt != 0 {
-			r, err := redigo.Int64(c.Do("pexpire", e.Key, ttlms))
+			r, err := Int64(c.Do("pexpire", e.Key, ttlms))
 			if err != nil && r != 1 {
 				log.Panicf("expire ", string(e.Key), err)
 			}
@@ -789,11 +792,11 @@ func RestoreRdbEntry(c redigo.Conn, e *rdb.BinEntry) {
 			(uint64(len(e.Value)) > conf.Options.BigKeyThreshold || e.RealMemberCount != 0) {
 		log.Debugf("restore big key[%s] with length[%v] and member count[%v]", e.Key, len(e.Value), e.RealMemberCount)
 		//use command
-		if conf.Options.Rewrite && e.NeedReadLen == 1 {
+		if conf.Options.KeyExists == "rewrite" && e.NeedReadLen == 1 {
 			if !conf.Options.Metric {
 				log.Infof("warning, rewrite big key:", string(e.Key))
 			}
-			_, err := redigo.Int64(c.Do("del", e.Key))
+			_, err := Int64(c.Do("del", e.Key))
 			if err != nil {
 				log.Panicf("del ", string(e.Key), err)
 			}
@@ -804,7 +807,7 @@ func RestoreRdbEntry(c redigo.Conn, e *rdb.BinEntry) {
 		}
 
 		if e.ExpireAt != 0 {
-			r, err := redigo.Int64(c.Do("pexpire", e.Key, ttlms))
+			r, err := Int64(c.Do("pexpire", e.Key, ttlms))
 			if err != nil && r != 1 {
 				log.Panicf("expire ", string(e.Key), err)
 			}
@@ -826,7 +829,7 @@ func RestoreRdbEntry(c redigo.Conn, e *rdb.BinEntry) {
 
 	log.Debugf("restore key[%s] with params[%v]", e.Key, params)
 	// fmt.Printf("key: %v, value: %v params: %v\n", string(e.Key), e.Value, params)
-	// s, err := redigo.String(c.Do("restore", params...))
+	// s, err := String(c.Do("restore", params...))
 RESTORE:
 	s, err := redigoCluster.String(c.Do("restore", params...))
 	if err != nil {
@@ -834,7 +837,8 @@ RESTORE:
 		  but in 4.0 kernel is "BUSYKEY Target key name already exists"*/
 		if strings.Contains(err.Error(), "Target key name is busy") ||
 			strings.Contains(err.Error(), "BUSYKEY Target key name already exists") {
-			if conf.Options.Rewrite {
+			switch conf.Options.KeyExists {
+			case "rewrite":
 				if !conf.Options.Metric {
 					log.Infof("warning, rewrite key: %v", string(e.Key))
 				}
@@ -850,8 +854,10 @@ RESTORE:
 
 				// retry
 				goto RESTORE
-			} else {
-				log.Panicf("target key name is busy:", string(e.Key))
+			case "ignore":
+				log.Warnf("target key name is busy but ignore: %v", string(e.Key))
+			case "none":
+				log.Panicf("target key name is busy: %v", string(e.Key))
 			}
 		} else if strings.Contains(err.Error(), "Bad data format") {
 			// from big version to small version may has this error. we need to split the data struct
@@ -923,11 +929,11 @@ func GetRedisVersion(target, authType, auth string, tlsEnable bool) (string, err
 	c := OpenRedisConn([]string{target}, authType, auth, false, tlsEnable)
 	defer c.Close()
 
-	infoStr, err := redigo.Bytes(c.Do("info", "server"))
+	infoStr, err := Bytes(c.Do("info", "server"))
 	if err != nil {
 		if err.Error() == CoidsErrMsg {
 			// "info xxx" command is disable in codis, try to use "info" and parse "xxx"
-			infoStr, err = redigo.Bytes(c.Do("info"))
+			infoStr, err = Bytes(c.Do("info"))
 			infoStr = CutRedisInfoSegment(infoStr, "server")
 		} else {
 			return "", err
@@ -968,7 +974,7 @@ func CheckHandleNetError(err error) bool {
 }
 
 func GetFakeSlaveOffset(c redigo.Conn) (string, error) {
-	infoStr, err := redigo.Bytes(c.Do("info", "Replication"))
+	infoStr, err := Bytes(c.Do("info", "Replication"))
 	if err != nil {
 		return "", err
 	}
